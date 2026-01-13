@@ -2,5 +2,5 @@
 1.LevelData(关卡数据设计，使用JSON)
 2.Resource_Manager(数据管理代码)
 3.Music(音效集成模块)
-4.Spring_Animation(精灵动画)
+4.Sprite_Animation(精灵动画)
 5.LevelLoader(使用工厂模式)
