@@ -10,6 +10,7 @@ from player import Player
 from brick_platform import BrickPlatform
 from background_generator import generate_background
 from coin import Coin
+from arrow import Arrow
 
 class Game:
     def __init__(self):
@@ -55,9 +56,15 @@ class Game:
         # 游戏状态
         self.game_over = False
         self.restart_timer = 0  # 用于控制闪烁效果
+
+        self.arrows = pygame.sprite.Group()
+        self.all_sprites.add(self.arrows)
+        self.update_camera()
+
         
         # 创建关卡
         self.create_level()
+
     
     def create_level(self):
         # 尖刺地面平台 - 扩展范围以支持左右移动，包括向左延伸
@@ -71,8 +78,11 @@ class Game:
         self.platforms.add(platform1)
         self.all_sprites.add(platform1)
         
+
         # 预生成平台直到达到最大高度限制
         self.pre_generate_platforms()
+
+        self.pre_spawn_arrows()
     
     def pre_generate_platforms(self):
         """预先生成平台直到达到最大高度限制"""
@@ -175,6 +185,38 @@ class Game:
             if self.platforms:
                 current_highest = min(platform.rect.y for platform in self.platforms if platform != self.player)
     
+    def pre_spawn_arrows(self):
+        """预生成一些箭矢"""
+    # 不需要预生成，因为箭矢是动态生成的
+    pass
+
+    def spawn_arrow(self):
+        """随机生成箭矢"""
+        # 根据当前高度和时间计算箭矢生成概率
+        # 随着高度增加，箭矢密度逐渐增大，最大达到40%
+        height_factor = min(1.0, (self.base_height - self.player.rect.y) / 2000.0)  # 基于高度的比例
+        density_factor = min(self.max_arrow_density, height_factor * self.max_arrow_density)
+        
+        # 根据密度因子决定是否生成箭矢
+        if random.random() < density_factor:
+            # 在屏幕宽度范围内随机生成箭矢
+            x_pos = random.randint(0, SCREEN_WIDTH - self.arrow_width)
+            # 从屏幕顶部或稍上方生成箭矢
+            y_pos = random.randint(-100, -30)
+            
+            arrow = Arrow(x_pos, y_pos)
+            self.arrows.add(arrow)
+            self.all_sprites.add(arrow)
+
+    def check_arrow_collisions(self):
+        """检测箭矢与玩家的碰撞"""
+        # 检测玩家与箭矢的碰撞
+        arrow_collisions = pygame.sprite.spritecollide(self.player, self.arrows, False)
+        for arrow in arrow_collisions:
+            # 如果玩家碰到箭矢，触发死亡
+            self.player_die()
+            return True
+        return False    
     def generate_new_platforms(self):
         """在上方随机生成新平台，确保平台间距离适中"""
         # 获取当前最高平台的大致位置
@@ -309,6 +351,13 @@ class Game:
         self.coins.empty()
         self.all_sprites.empty()
         
+
+        # 清除箭矢
+        self.arrows.empty()
+    
+        # 重置箭矢生成计时器
+        self.arrow_spawn_timer = 0
+
         # 重新创建地面
         ground = BrickPlatform(-SCREEN_WIDTH, SCREEN_HEIGHT - 40, SCREEN_WIDTH * 3, 40, DEATH_GROUND)
         self.platforms.add(ground)
@@ -330,7 +379,11 @@ class Game:
         if self.game_over:
             self.restart_timer = (self.restart_timer + 1) % 60  # 每秒闪烁一次
             return
-        
+        self.arrow_spawn_timer += 1
+        if self.arrow_spawn_timer >= 30:  # 每半秒尝试生成箭矢
+            self.spawn_arrow()
+            self.arrow_spawn_timer = 0
+
         keys = pygame.key.get_pressed()
         
         # 左右移动键改为 'a' 和 'd'
@@ -354,7 +407,9 @@ class Game:
             if isinstance(sprite, BrickPlatform) and sprite.is_moving:
                 sprite.update()  # 更新移动平台
         self.all_sprites.update(self.platforms)
-        
+        # 检测箭矢碰撞
+        self.check_arrow_collisions()
+
         # 检测金币碰撞
         coin_collisions = pygame.sprite.spritecollide(self.player, self.coins, True)
         for coin in coin_collisions:
@@ -455,10 +510,18 @@ class Game:
         
         # 绘制所有精灵
         for sprite in self.all_sprites:
-            screen_x = sprite.rect.x - self.camera_offset_x
-            screen_y = sprite.rect.y - self.camera_offset_y  # 添加y轴偏移
-            self.screen.blit(sprite.image, (screen_x, screen_y))
+            if not isinstance(sprite, Arrow):
+                screen_x = sprite.rect.x - self.camera_offset_x
+                screen_y = sprite.rect.y - self.camera_offset_y  # 添加y轴偏移
+                self.screen.blit(sprite.image, (screen_x, screen_y))
         
+
+        # 单独绘制箭矢
+        for arrow in self.arrows:
+            screen_x = arrow.rect.x - self.camera_offset_x
+            screen_y = arrow.rect.y - self.camera_offset_y
+            self.screen.blit(arrow.image, (screen_x, screen_y))
+    
         # 使用系统字体来显示中文
         # 首先尝试几种常见的中文字体
         fonts_to_try = ['simhei', 'simkai', 'simsun', 'microsoftyahei', 'arialunicode']

@@ -24,3 +24,8 @@ PLAYER_HEIGHT = 48
 # 死亡区域类型
 DEATH_GROUND = "death_ground"
 PLATFORM = "platform"
+
+# 在 constants.py 文件末尾添加
+# 箭矢尺寸
+ARROW_WIDTH = 10
+ARROW_HEIGHT = 30
