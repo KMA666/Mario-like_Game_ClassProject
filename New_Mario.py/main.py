@@ -1,4 +1,4 @@
-# script.py - 主程序入口
+#main.py - 主程序入口
 import pygame
 import sys
 from game import Game
