@@ -1,0 +1,15 @@
+# constants.py - 游戏常量定义
+# 游戏常量
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+FPS = 60
+GRAVITY = 0.5
+JUMP_STRENGTH = -12
+PLAYER_SPEED = 5
+
+# 颜色定义
+WHITE = (255, 255, 255)
+BLUE = (0, 0, 255)
+GREEN = (0, 255, 0)
+RED = (255, 0, 0)
+BROWN = (139, 69, 19)
