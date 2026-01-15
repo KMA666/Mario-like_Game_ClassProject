@@ -13,7 +13,12 @@ BLUE = (0, 0, 255)
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 BROWN = (139, 69, 19)
+SPIKE_COLOR = (105, 105, 105)  # 尖刺颜色
 
 # 角色尺寸
 PLAYER_WIDTH = 32
 PLAYER_HEIGHT = 48
+
+# 死亡区域类型
+DEATH_GROUND = "death_ground"
+PLATFORM = "platform"

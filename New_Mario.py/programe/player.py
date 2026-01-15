@@ -89,10 +89,11 @@ class Player(pygame.sprite.Sprite):
         # 应用重力
         self.vel_y += GRAVITY
         
-        # 更新位置
+        # 更新位置 - 先更新x方向
         self.rect.x += self.vel_x
         self.check_collisions(platforms, 'x')
         
+        # 再更新y方向
         self.rect.y += self.vel_y
         self.check_collisions(platforms, 'y')
         
@@ -104,6 +105,11 @@ class Player(pygame.sprite.Sprite):
         collisions = pygame.sprite.spritecollide(self, platforms, False)
         
         for platform in collisions:
+            # 如果是尖刺地面，特殊处理
+            if hasattr(platform, 'platform_type') and platform.platform_type == DEATH_GROUND:
+                # 对于尖刺地面，我们不在这里处理碰撞，而是在game.py中处理死亡
+                continue
+            
             if direction == 'x':
                 if self.vel_x > 0:  # 向右移动
                     self.rect.right = platform.rect.left
