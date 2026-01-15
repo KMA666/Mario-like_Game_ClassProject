@@ -97,7 +97,7 @@ class Game:
         
          # 加载背景图片
         self.background_img = None
-        background_path = os.path.join("resources", "Blue.png")
+        background_path = os.path.join("Background", "Blue.png")
         if os.path.exists(background_path):
             self.background_img = pygame.image.load(background_path).convert()
             # 缩放背景图片以适应屏幕尺寸
