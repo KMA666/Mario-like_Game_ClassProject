@@ -13,3 +13,7 @@ BLUE = (0, 0, 255)
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 BROWN = (139, 69, 19)
+
+# 角色尺寸
+PLAYER_WIDTH = 32
+PLAYER_HEIGHT = 48

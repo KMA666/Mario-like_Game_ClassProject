@@ -1,4 +1,4 @@
-# platform.py - 平台类定义
+# platform.py - 平台类定义，游戏中的物体，玩家可以站在上面
 import pygame
 from constants import *
 
