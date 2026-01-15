@@ -1,6 +1,8 @@
 #main.py - 主程序入口
+# -*- coding: utf-8 -*-
 import pygame
 import sys
+
 from game import Game
 
 if __name__ == "__main__":

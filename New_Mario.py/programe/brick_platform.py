@@ -1,7 +1,10 @@
 # brick_platform.py - 砖块平台类定义
+# -*- coding: utf-8 -*-
 import pygame
 from constants import *
-
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 class BrickPlatform(pygame.sprite.Sprite):
     def __init__(self, x, y, width, height, platform_type=PLATFORM):
         super().__init__()

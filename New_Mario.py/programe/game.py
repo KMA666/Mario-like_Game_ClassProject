@@ -1,10 +1,17 @@
 # game.py - 游戏主类定义
 import pygame
 import os
+import random
+import sys
+import io
 from constants import *
 from player import Player
 from brick_platform import BrickPlatform
 from background_generator import generate_background
+from coin import Coin
+
+# 设置输出编码
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 class Game:
     def __init__(self):
@@ -23,20 +30,33 @@ class Game:
         # 创建精灵组
         self.all_sprites = pygame.sprite.Group()
         self.platforms = pygame.sprite.Group()
+        self.coins = pygame.sprite.Group()  # 金币精灵组
         
         # 设置初始重生点在第一个安全平台上
         self.respawn_point = (250, 400)  # 第一个安全平台的位置
         
+        # 设置初始得分基准高度
+        self.base_height = self.respawn_point[1]  # 以出生位置的高度为0分基准
+        
         # 创建玩家 - 在安全平台上生成
-        self.player = Player(self.respawn_point[0], self.respawn_point[1])  # 在安全平台位置生成玩家
+        self.player = Player(self.respawn_point[0], self.respawn_point[1])
         self.all_sprites.add(self.player)
         
         # 创建关卡
         self.create_level()
         
+        # 游戏得分
+        self.score = 0
+        self.max_height_reached = self.base_height  # 玩家达到的最高y坐标（数值越小表示越高）
+        
         # 摄像机偏移
         self.camera_offset_x = 0
+        self.camera_offset_y = 0  # 添加y轴偏移以跟随玩家垂直移动
         
+        # 游戏状态
+        self.game_over = False
+        self.restart_timer = 0  # 用于控制闪烁效果
+    
     def create_level(self):
         # 尖刺地面平台 - 扩展范围以支持左右移动，包括向左延伸
         # 将尖刺地面放置在更宽的范围内，确保摄像机向左移动时也有尖刺
@@ -44,44 +64,88 @@ class Game:
         self.platforms.add(ground)
         self.all_sprites.add(ground)
         
-        # 其他安全砖块平台作为重生点
+        # 初始安全平台
         platform1 = BrickPlatform(200, 450, 100, 20)
         self.platforms.add(platform1)
         self.all_sprites.add(platform1)
         
-        platform2 = BrickPlatform(400, 350, 100, 20)
-        self.platforms.add(platform2)
-        self.all_sprites.add(platform2)
+        # 在上方生成一些初始平台
+        for i in range(1, 6):  # 生成5层平台
+            y_pos = 450 - i * 80  # 每层间隔80像素
+            x_pos = random.randint(50, SCREEN_WIDTH - 100)
+            platform = BrickPlatform(x_pos, y_pos, 80, 15)
+            self.platforms.add(platform)
+            self.all_sprites.add(platform)
+    
+    def generate_new_platforms(self):
+        """在上方随机生成新平台，确保平台间距离适中"""
+        # 获取当前最高平台的大致位置
+        current_highest = min(platform.rect.y for platform in self.platforms)
         
-        platform3 = BrickPlatform(600, 250, 100, 20)
-        self.platforms.add(platform3)
-        self.all_sprites.add(platform3)
+        # 计算要生成的新平台数量
+        platforms_needed = 3  # 每次生成3个新平台
         
-        # 更多安全平台
-        platform4 = BrickPlatform(100, 200, 100, 20)
-        self.platforms.add(platform4)
-        self.all_sprites.add(platform4)
-        
-        platform5 = BrickPlatform(350, 150, 100, 20)
-        self.platforms.add(platform5)
-        self.all_sprites.add(platform5)
-        
-        # 额外的安全平台
-        platform6 = BrickPlatform(550, 400, 80, 15)
-        self.platforms.add(platform6)
-        self.all_sprites.add(platform6)
-        
-        platform7 = BrickPlatform(150, 350, 120, 15)
-        self.platforms.add(platform7)
-        self.all_sprites.add(platform7)
+        # 生成新平台，确保它们之间有合理的距离
+        for i in range(platforms_needed):
+            # 从当前最高平台向上生成，确保跳跃可达
+            y_pos = current_highest - random.randint(80, 120)  # 高度间隔在80-120像素之间
+            
+            # 生成x坐标，确保平台之间有适当的水平距离
+            # 基于玩家跳跃能力设定合理的水平距离
+            x_pos = random.randint(50, SCREEN_WIDTH - 100)
+            
+            # 检查新平台是否与现有平台重叠
+            overlap = True
+            attempts = 0
+            while overlap and attempts < 50:  # 最多重试50次
+                overlap = False
+                for platform in self.platforms:
+                    # 检查新平台是否与现有平台重叠
+                    if (abs(platform.rect.x - x_pos) < 100 and 
+                        abs(platform.rect.y - y_pos) < 40):  # 平台间隔至少40像素
+                        overlap = True
+                        # 重新生成坐标
+                        x_pos = random.randint(50, SCREEN_WIDTH - 100)
+                        y_pos = current_highest - random.randint(80, 120)
+                        break
+                attempts += 1
+            
+            # 如果重试次数过多，仍然有重叠，强制生成
+            if attempts >= 50:
+                # 采用固定间隔的方式生成平台
+                x_pos = 100 + (i * 200)  # 固定水平间隔
+                y_pos = current_highest - 100  # 固定垂直间隔
+            
+            # 创建新平台
+            platform = BrickPlatform(x_pos, y_pos, 80, 15)
+            self.platforms.add(platform)
+            self.all_sprites.add(platform)
+            
+            # 每隔10个平台生成一个金币（约10个平台一次）
+            # 这里我们使用一个计数器来追踪平台数量
+            if hasattr(self, 'platform_count'):
+                self.platform_count += 1
+            else:
+                self.platform_count = 1
+            
+            # 每10个平台生成一次金币
+            if self.platform_count % 10 == 0:
+                coin_x = x_pos + random.randint(10, 60)  # 在平台上的随机位置
+                coin_y = y_pos - 20  # 在平台上方一点点
+                coin = Coin(coin_x, coin_y)
+                self.coins.add(coin)
+                self.all_sprites.add(coin)
     
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
             elif event.type == pygame.KEYDOWN:
+                # 如果游戏结束，按任意键重新开始
+                if self.game_over:
+                    self.restart_game()
                 # 跳跃键改为 'w'
-                if event.key == pygame.K_w:
+                elif event.key == pygame.K_w:
                     self.player.jump()
             elif event.type == pygame.KEYUP:
                 # 左右移动停止检测改为 'a' 和 'd'
@@ -89,7 +153,51 @@ class Game:
                     self.player.stop()
         return True
     
+    def restart_game(self):
+        """重新开始游戏"""
+        self.game_over = False
+        self.player.rect.x = self.respawn_point[0]
+        self.player.rect.y = self.respawn_point[1]
+        self.player.vel_x = 0
+        self.player.vel_y = 0
+        
+        # 重置得分
+        self.score = 0
+        self.max_height_reached = self.base_height
+        self.platform_count = 0  # 重置平台计数器
+        
+        # 清除现有平台（除了地面）
+        self.platforms.empty()
+        self.coins.empty()
+        self.all_sprites.empty()
+        
+        # 重新创建地面
+        ground = BrickPlatform(-SCREEN_WIDTH, SCREEN_HEIGHT - 40, SCREEN_WIDTH * 3, 40, DEATH_GROUND)
+        self.platforms.add(ground)
+        self.all_sprites.add(ground)
+        
+        # 重新创建初始平台
+        platform1 = BrickPlatform(200, 450, 100, 20)
+        self.platforms.add(platform1)
+        self.all_sprites.add(platform1)
+        
+        # 在上方生成一些初始平台
+        for i in range(1, 6):  # 生成5层平台
+            y_pos = 450 - i * 80
+            x_pos = random.randint(50, SCREEN_WIDTH - 100)
+            platform = BrickPlatform(x_pos, y_pos, 80, 15)
+            self.platforms.add(platform)
+            self.all_sprites.add(platform)
+        
+        # 重新添加玩家到精灵组
+        self.all_sprites.add(self.player)
+    
     def update(self):
+        # 如果游戏结束，只更新闪烁效果计时器
+        if self.game_over:
+            self.restart_timer = (self.restart_timer + 1) % 60  # 每秒闪烁一次
+            return
+        
         keys = pygame.key.get_pressed()
         
         # 左右移动键改为 'a' 和 'd'
@@ -100,6 +208,11 @@ class Game:
             
         # 更新所有精灵
         self.all_sprites.update(self.platforms)
+        
+        # 检测金币碰撞
+        coin_collisions = pygame.sprite.spritecollide(self.player, self.coins, True)
+        for coin in coin_collisions:
+            self.score += 100  # 拾取金币增加100分
         
         # 重置地面状态
         self.player.on_ground = False
@@ -121,34 +234,39 @@ class Game:
         if self.player.rect.y > SCREEN_HEIGHT:
             self.player_die()
         
+        # 更新得分 - 基于玩家达到的最高高度
+        self.update_score()
+        
+        # 如果玩家到达当前最高点上方，生成新平台
+        if self.player.rect.y < self.max_height_reached - 100:  # 当玩家向上移动100像素以上时
+            self.generate_new_platforms()
+            self.max_height_reached = self.player.rect.y
+        
         # 摄像机跟随玩家
         self.update_camera()
     
+    def update_score(self):
+        """更新游戏得分"""
+        # 得分计算：基于玩家达到的最高高度
+        # 玩家越高（y值越小），得分越高
+        height_gained = self.base_height - self.max_height_reached
+        self.score = max(0, height_gained // 10)  # 每上升10像素得1分
+    
     def player_die(self):
         """处理玩家死亡事件"""
-        print("玩家死亡！重生在安全平台")
-        
-        # 重置玩家位置到安全平台
-        self.player.rect.x = self.respawn_point[0]
-        self.player.rect.y = self.respawn_point[1]
-        self.player.vel_x = 0
-        self.player.vel_y = 0
-        
-        # 确保玩家不会立即再次死亡
-        # 检查重生点是否安全
-        collisions = pygame.sprite.spritecollide(self.player, self.platforms, False)
-        for platform in collisions:
-            if hasattr(platform, 'platform_type') and platform.platform_type == DEATH_GROUND:
-                # 如果重生点不安全，稍微调整位置
-                self.player.rect.y = self.respawn_point[1] - 50  # 往上一点
+        print(f"Player died! Final score: {self.score}")
+        self.game_over = True
+        self.restart_timer = 0  # 重置闪烁计时器
     
     def update_camera(self):
         # 计算摄像机中心应该在的位置 - 让摄像机跟随玩家
         target_x = self.player.rect.centerx - SCREEN_WIDTH // 2
+        target_y = self.player.rect.centery - SCREEN_HEIGHT // 2  # 添加y轴跟随
         
         # 平滑移动摄像机，但限制其移动范围
         # 使用更快的跟踪速度，使摄像机更灵敏
         self.camera_offset_x += (target_x - self.camera_offset_x) * 0.2  # 提高跟踪速度
+        self.camera_offset_y += (target_y - self.camera_offset_y) * 0.2  # 添加y轴跟踪
 
         # 限制摄像机不能移到关卡边界之外
         # 获取所有平台中最左和最右的边界
@@ -163,6 +281,11 @@ class Game:
         min_camera_x = -(SCREEN_WIDTH // 2)  # 允许向左扩展
         max_camera_x = max_x - SCREEN_WIDTH // 2
         self.camera_offset_x = max(min_camera_x, min(self.camera_offset_x, max_camera_x))
+        
+        # Y轴相机限制（允许向下看，但限制向上看）
+        min_camera_y = -float('inf')  # 移除上边界限制，允许无限向上
+        max_camera_y = 0  # 不让相机低于起始位置太多
+        self.camera_offset_y = max(min_camera_y, min(self.camera_offset_y, max_camera_y))
     
     def draw(self):
         # 绘制背景
@@ -176,16 +299,68 @@ class Game:
         # 绘制所有精灵
         for sprite in self.all_sprites:
             screen_x = sprite.rect.x - self.camera_offset_x
-            self.screen.blit(sprite.image, (screen_x, sprite.rect.y))
+            screen_y = sprite.rect.y - self.camera_offset_y  # 添加y轴偏移
+            self.screen.blit(sprite.image, (screen_x, screen_y))
+        
+        # 使用系统字体来显示中文
+        # 首先尝试几种常见的中文字体
+        fonts_to_try = ['simhei', 'simkai', 'simsun', 'microsoftyahei', 'arialunicode']
+        font = None
+        for font_name in fonts_to_try:
+            try:
+                font = pygame.font.Font(f"C:/Windows/Fonts/{font_name}.ttf", 24)
+                break
+            except FileNotFoundError:
+                try:
+                    font = pygame.font.SysFont(font_name, 24)
+                    break
+                except:
+                    continue
+        
+        # 如果找不到中文字体，使用默认字体
+        if font is None:
+            font = pygame.font.SysFont(None, 24)
         
         # 显示提示信息
-        font = pygame.font.SysFont(None, 24)
-        text = font.render("使用 A/D 移动，W 键跳跃 - 注意避开尖刺地面！", True, RED)
+        text = font.render("使用 A/D 键移动，W 键跳跃 - 避开尖刺！", True, RED)
         self.screen.blit(text, (10, 10))
         
+        # 显示当前得分
+        score_text = font.render(f"游戏得分: {self.score}", True, RED)
+        self.screen.blit(score_text, (10, 35))
+        
         # 显示当前重生点信息
-        respawn_text = font.render(f"重生点: ({self.respawn_point[0]}, {self.respawn_point[1]})", True, RED)
-        self.screen.blit(respawn_text, (10, 35))
+        # respawn_text = font.render(f"Respawn: ({self.respawn_point[0]}, {self.respawn_point[1]})", True, RED)
+        # self.screen.blit(respawn_text, (10, 60))
+        
+        # 如果游戏结束，显示重新开始提示
+        if self.game_over:
+            large_font = None
+            for font_name in fonts_to_try:
+                try:
+                    large_font = pygame.font.Font(f"C:/Windows/Fonts/{font_name}.ttf", 48)
+                    break
+                except FileNotFoundError:
+                    try:
+                        large_font = pygame.font.SysFont(font_name, 48)
+                        break
+                    except:
+                        continue
+            
+            if large_font is None:
+                large_font = pygame.font.SysFont(None, 48)
+                
+            game_over_text = large_font.render("GAME OVER!", True, RED)
+            restart_text = font.render("按任意键重新开始", True, RED)
+            
+            # 居中显示文本
+            game_over_rect = game_over_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 30))
+            restart_rect = restart_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 20))
+            
+            # 闪烁效果：每秒闪烁一次
+            if self.restart_timer < 30:  # 半秒亮半秒暗
+                self.screen.blit(game_over_text, game_over_rect)
+                self.screen.blit(restart_text, restart_rect)
         
         pygame.display.flip()
     

@@ -1,8 +1,11 @@
-# player.py - 玩家类定义（单帧图像）
+# player.py - 玩家类定义（火柴人形象）
+# -*- coding: utf-8 -*-
 import pygame
 import os
 from constants import *
-
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 class Player(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
@@ -25,65 +28,45 @@ class Player(pygame.sprite.Sprite):
         self.rect.y = self.start_y
     
     def load_character_image(self):
-        """尝试加载角色精灵图片"""
-        # 获取当前脚本所在目录
-        current_dir = os.path.dirname(os.path.abspath(__file__))
+        """绘制火柴人角色"""
+        # 创建角色表面
+        self.image = pygame.Surface((PLAYER_WIDTH, PLAYER_HEIGHT), pygame.SRCALPHA)
         
-        # 检查Ninja Frog目录中实际存在哪些文件
-        ninja_frog_dir = os.path.join(current_dir, "Main Characters", "Ninja Frog")
+        # 定义颜色
+        HEAD_COLOR = (0, 0, 0)        # 黑色头部
+        BODY_COLOR = (0, 0, 0)        # 黑色身体
+        LIMB_COLOR = (0, 0, 0)        # 黑色四肢
         
-        if os.path.exists(ninja_frog_dir):
-            available_files = os.listdir(ninja_frog_dir)
-            print(f"Ninja Frog目录中的文件: {available_files}")
-        else:
-            print("Ninja Frog目录不存在!")
+        # 绘制火柴人 - 使用简单的几何图形
+        center_x = PLAYER_WIDTH // 2
+        head_radius = 6
         
-        # 尝试加载Ninja Frog角色图片，使用更灵活的文件名匹配
-        possible_image_names = [
-            "Idle.png", "idle.png", "IDLE.png", 
-            "Idle.PNG", "idle.PNG", "Character_Idle.png",
-            "MainChar.png", "mainchar.png", "MainChar.PNG",
-            "Run (3).png", "run (3).png", "Run.png", "run.png",
-            "Jump.png", "jump.png", "Fall.png", "fall.png"
-        ]
+        # 绘制头部 (圆形)
+        pygame.draw.circle(self.image, HEAD_COLOR, (center_x, head_radius + 2), head_radius)
         
-        char_image_path = None
-        for name in possible_image_names:
-            potential_path = os.path.join(current_dir, "Main Characters", "Ninja Frog", name)
-            if os.path.exists(potential_path):
-                char_image_path = potential_path
-                break
+        # 绘制身体 (线条)
+        body_start = (center_x, head_radius * 2 + 2)  # 从头部下方开始
+        body_end = (center_x, PLAYER_HEIGHT // 2 + 5)  # 身体长度
+        pygame.draw.line(self.image, BODY_COLOR, body_start, body_end, 2)
         
-        if char_image_path and os.path.exists(char_image_path):
-            try:
-                # 加载角色图像
-                original_image = pygame.image.load(char_image_path).convert_alpha()
-                
-                # 获取原始图像尺寸
-                orig_width, orig_height = original_image.get_size()
-                
-                # 按比例缩放到游戏尺寸，保持宽高比
-                scale_factor = min(PLAYER_WIDTH / orig_width, PLAYER_HEIGHT / orig_height)
-                new_width = int(orig_width * scale_factor)
-                new_height = int(orig_height * scale_factor)
-                
-                # 缩放图像
-                self.image = pygame.transform.scale(original_image, (new_width, new_height))
-                
-                print(f"成功加载角色图片: {char_image_path}, 缩放至: {new_width}x{new_height}")
-            except Exception as e:
-                print(f"加载角色精灵失败: {e}")
-                # 备用方案：创建蓝色方块
-                self.image = pygame.Surface((PLAYER_WIDTH, PLAYER_HEIGHT))
-                self.image.fill(BLUE)
-        else:
-            # 如果没有找到图片，使用原来的蓝色方块
-            print("未找到角色图片，使用默认图形")
-            self.image = pygame.Surface((PLAYER_WIDTH, PLAYER_HEIGHT))
-            self.image.fill(BLUE)
+        # 绘制手臂
+        arm_start = body_start
+        arm_end_left = (center_x - 8, PLAYER_HEIGHT // 2 - 5)
+        arm_end_right = (center_x + 8, PLAYER_HEIGHT // 2 - 5)
+        pygame.draw.line(self.image, LIMB_COLOR, arm_start, arm_end_left, 2)
+        pygame.draw.line(self.image, LIMB_COLOR, arm_start, arm_end_right, 2)
+        
+        # 绘制腿
+        leg_start = body_end
+        leg_end_left = (center_x - 6, PLAYER_HEIGHT - 5)
+        leg_end_right = (center_x + 6, PLAYER_HEIGHT - 5)
+        pygame.draw.line(self.image, LIMB_COLOR, leg_start, leg_end_left, 2)
+        pygame.draw.line(self.image, LIMB_COLOR, leg_start, leg_end_right, 2)
         
         # 创建rect对象
         self.rect = self.image.get_rect()
+        self.rect.x = self.start_x
+        self.rect.y = self.start_y
     
     def update(self, platforms):
         # 应用重力
