@@ -4,8 +4,7 @@ import pygame
 import os
 from constants import *
 import sys
-import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 class Player(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
@@ -19,6 +18,13 @@ class Player(pygame.sprite.Sprite):
         self.vel_y = 0
         self.on_ground = False
         self.facing_right = True  # 朝向标志
+        
+        # 跳跃相关
+        self.jumps_remaining = 2  # 允许跳跃次数（2段跳）
+        self.max_jumps = 2  # 最大跳跃次数
+        
+        # 奔跑相关
+        self.is_sprinting = False  # 是否在奔跑
         
         # 尝试加载角色图片
         self.load_character_image()
@@ -108,21 +114,103 @@ class Player(pygame.sprite.Sprite):
                     self.rect.bottom = platform.rect.top
                     self.vel_y = 0
                     self.on_ground = True
+                    # 落地时重置跳跃次数
+                    self.jumps_remaining = self.max_jumps
                 elif self.vel_y < 0:  # 上跳
                     self.rect.top = platform.rect.bottom
                     self.vel_y = 0
+                    # 注意：碰到天花板时不应重置跳跃次数
     
     def jump(self):
-        self.vel_y = JUMP_STRENGTH
-        self.on_ground = False
+        # 检查是否还有跳跃次数
+        if self.jumps_remaining > 0:
+            self.vel_y = JUMP_STRENGTH
+            self.jumps_remaining -= 1
+            self.on_ground = False
     
     def move_left(self):
-        self.vel_x = -PLAYER_SPEED
+        speed = PLAYER_SPEED * SPRINT_MULTIPLIER if self.is_sprinting else PLAYER_SPEED
+        self.vel_x = -speed
         self.facing_right = False
+        # 更新奔跑状态的火柴人图像
+        self.update_sprite_image()
         
     def move_right(self):
-        self.vel_x = PLAYER_SPEED
+        speed = PLAYER_SPEED * SPRINT_MULTIPLIER if self.is_sprinting else PLAYER_SPEED
+        self.vel_x = speed
         self.facing_right = True
+        # 更新奔跑状态的火柴人图像
+        self.update_sprite_image()
         
     def stop(self):
         self.vel_x = 0
+    
+    def set_sprint(self, sprinting):
+        self.is_sprinting = sprinting
+        # 更新奔跑状态的火柴人图像
+        self.update_sprite_image()
+    
+    def update_sprite_image(self):
+        """更新火柴人的图像，根据奔跑状态"""
+        # 创建角色表面
+        self.image = pygame.Surface((PLAYER_WIDTH, PLAYER_HEIGHT), pygame.SRCALPHA)
+        
+        # 定义颜色
+        HEAD_COLOR = (0, 0, 0)        # 黑色头部
+        BODY_COLOR = (0, 0, 0)        # 黑色身体
+        LIMB_COLOR = (0, 0, 0)        # 黑色四肢
+        
+        # 绘制火柴人 - 使用简单的几何图形
+        center_x = PLAYER_WIDTH // 2
+        head_radius = 6
+        
+        # 绘制头部 (圆形)
+        pygame.draw.circle(self.image, HEAD_COLOR, (center_x, head_radius + 2), head_radius)
+        
+        # 绘制身体 (线条)
+        body_start = (center_x, head_radius * 2 + 2)  # 从头部下方开始
+        body_end = (center_x, PLAYER_HEIGHT // 2 + 5)  # 身体长度
+        pygame.draw.line(self.image, BODY_COLOR, body_start, body_end, 2)
+        
+        if self.is_sprinting:
+            # 奔跑状态：手臂和腿部呈奔跑姿态
+            # 绘制手臂（奔跑姿态，向前后摆动）
+            arm_start = body_start
+            # 前臂（与移动方向相反）
+            if self.facing_right:
+                # 向右移动时，右臂向前
+                arm_end_front = (center_x + 10, PLAYER_HEIGHT // 2 - 2)
+                arm_end_back = (center_x - 10, PLAYER_HEIGHT // 2)
+            else:
+                # 向左移动时，左臂向前
+                arm_end_front = (center_x - 10, PLAYER_HEIGHT // 2 - 2)
+                arm_end_back = (center_x + 10, PLAYER_HEIGHT // 2)
+            pygame.draw.line(self.image, LIMB_COLOR, arm_start, arm_end_front, 2)
+            pygame.draw.line(self.image, LIMB_COLOR, arm_start, arm_end_back, 2)
+            
+            # 绘制腿（奔跑姿态，一前一后）
+            leg_start = body_end
+            # 前腿（与移动方向相同）
+            if self.facing_right:
+                leg_end_front = (center_x + 8, PLAYER_HEIGHT - 8)
+                leg_end_back = (center_x - 8, PLAYER_HEIGHT - 2)
+            else:
+                leg_end_front = (center_x - 8, PLAYER_HEIGHT - 8)
+                leg_end_back = (center_x + 8, PLAYER_HEIGHT - 2)
+            pygame.draw.line(self.image, LIMB_COLOR, leg_start, leg_end_front, 2)
+            pygame.draw.line(self.image, LIMB_COLOR, leg_start, leg_end_back, 2)
+        else:
+            # 正常状态：手臂和腿部呈常规姿态
+            # 绘制手臂
+            arm_start = body_start
+            arm_end_left = (center_x - 8, PLAYER_HEIGHT // 2 - 5)
+            arm_end_right = (center_x + 8, PLAYER_HEIGHT // 2 - 5)
+            pygame.draw.line(self.image, LIMB_COLOR, arm_start, arm_end_left, 2)
+            pygame.draw.line(self.image, LIMB_COLOR, arm_start, arm_end_right, 2)
+            
+            # 绘制腿
+            leg_start = body_end
+            leg_end_left = (center_x - 6, PLAYER_HEIGHT - 5)
+            leg_end_right = (center_x + 6, PLAYER_HEIGHT - 5)
+            pygame.draw.line(self.image, LIMB_COLOR, leg_start, leg_end_left, 2)
+            pygame.draw.line(self.image, LIMB_COLOR, leg_start, leg_end_right, 2)

@@ -7,8 +7,8 @@ class Coin(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
         
-        # 创建金币表面
-        self.image = pygame.Surface((20, 20), pygame.SRCALPHA)
+        # 创建金币表面 - 改为40x40（原来20x20）
+        self.image = pygame.Surface((40, 40), pygame.SRCALPHA)
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
@@ -33,17 +33,17 @@ class Coin(pygame.sprite.Sprite):
         # 绘制金币主体
         center_x = self.rect.width // 2
         center_y = self.rect.height // 2
-        radius = 8
+        radius = 16  # 原来是8，现在翻倍
         
         # 绘制外圆
         pygame.draw.circle(self.image, GOLD_OUTER, (center_x, center_y), radius)
         
         # 绘制内圆
-        pygame.draw.circle(self.image, GOLD_INNER, (center_x, center_y), radius - 2)
+        pygame.draw.circle(self.image, GOLD_INNER, (center_x, center_y), radius - 4)
         
         # 绘制高光
-        highlight_pos = (center_x - 2, center_y - 2)
-        pygame.draw.circle(self.image, GOLD_HIGHLIGHT, highlight_pos, 2)
+        highlight_pos = (center_x - 4, center_y - 4)
+        pygame.draw.circle(self.image, GOLD_HIGHLIGHT, highlight_pos, 4)
     
     def update(self, platforms=None):
         """更新金币状态"""

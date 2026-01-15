@@ -3,8 +3,7 @@
 import pygame
 import random
 import sys
-import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 def generate_background(screen_width, screen_height):
     """
     生成包含天空、森林和云朵的背景

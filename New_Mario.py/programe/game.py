@@ -3,15 +3,16 @@ import pygame
 import os
 import random
 import sys
-import io
+# import io  # 注释掉这行，避免不必要的导入
+# sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')  # 注释掉这行
 from constants import *
 from player import Player
 from brick_platform import BrickPlatform
 from background_generator import generate_background
 from coin import Coin
 
-# 设置输出编码
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+
 
 class Game:
     def __init__(self):
@@ -78,21 +79,29 @@ class Game:
             self.all_sprites.add(platform)
     
     def generate_new_platforms(self):
-        """在上方随机生成新平台，确保平台间距离适中"""
+        
         # 获取当前最高平台的大致位置
         current_highest = min(platform.rect.y for platform in self.platforms)
-        
+
         # 计算要生成的新平台数量
         platforms_needed = 3  # 每次生成3个新平台
-        
+
+        # 估算二段跳最大距离
+        # 跳跃公式: v^2 = u^2 + 2as, 其中v=0, u=JUMP_STRENGTH, a=-GRAVITY
+        # 最大高度 = u^2 / (2*g) * 2 (考虑两段跳)
+        # 估算二段跳最大水平距离 (考虑玩家最大移动速度)
+        max_horizontal_distance = int(PLAYER_SPEED * SPRINT_MULTIPLIER * 8)  # 估算值
+
         # 生成新平台，确保它们之间有合理的距离
         for i in range(platforms_needed):
             # 从当前最高平台向上生成，确保跳跃可达
-            y_pos = current_highest - random.randint(80, 120)  # 高度间隔在80-120像素之间
+            # 限制最大跳跃距离以确保玩家能够到达
+            max_jump_height = abs(JUMP_STRENGTH) * 2.5  # 二段跳估算的最大高度
+            y_pos = current_highest - random.randint(60, int(max_jump_height))  # 减少最大高度
             
-            # 生成x坐标，确保平台之间有适当的水平距离
-            # 基于玩家跳跃能力设定合理的水平距离
-            x_pos = random.randint(50, SCREEN_WIDTH - 100)
+            # 估算玩家水平跳跃距离
+            horizontal_range = min(max_horizontal_distance, SCREEN_WIDTH)
+            x_pos = random.randint(50, SCREEN_WIDTH - 50 - horizontal_range)
             
             # 检查新平台是否与现有平台重叠
             overlap = True
@@ -102,11 +111,11 @@ class Game:
                 for platform in self.platforms:
                     # 检查新平台是否与现有平台重叠
                     if (abs(platform.rect.x - x_pos) < 100 and 
-                        abs(platform.rect.y - y_pos) < 40):  # 平台间隔至少40像素
+                        abs(platform.rect.y - y_pos) < 60):  # 减少垂直间隔
                         overlap = True
                         # 重新生成坐标
-                        x_pos = random.randint(50, SCREEN_WIDTH - 100)
-                        y_pos = current_highest - random.randint(80, 120)
+                        y_pos = current_highest - random.randint(60, int(max_jump_height))
+                        x_pos = random.randint(50, SCREEN_WIDTH - 50)
                         break
                 attempts += 1
             
@@ -114,7 +123,7 @@ class Game:
             if attempts >= 50:
                 # 采用固定间隔的方式生成平台
                 x_pos = 100 + (i * 200)  # 固定水平间隔
-                y_pos = current_highest - 100  # 固定垂直间隔
+                y_pos = current_highest - 80  # 固定垂直间隔
             
             # 创建新平台
             platform = BrickPlatform(x_pos, y_pos, 80, 15)
@@ -135,24 +144,28 @@ class Game:
                 coin = Coin(coin_x, coin_y)
                 self.coins.add(coin)
                 self.all_sprites.add(coin)
-    
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
             elif event.type == pygame.KEYDOWN:
-                # 如果游戏结束，按任意键重新开始
+            # 如果游戏结束，按任意键重新开始
                 if self.game_over:
                     self.restart_game()
-                # 跳跃键改为 'w'
+            # 跳跃键改为 'w'
                 elif event.key == pygame.K_w:
                     self.player.jump()
+            # 处理Shift键
+                elif event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
+                    self.player.set_sprint(True)
             elif event.type == pygame.KEYUP:
-                # 左右移动停止检测改为 'a' 和 'd'
+            # 左右移动停止检测改为 'a' 和 'd'
                 if event.key == pygame.K_a or event.key == pygame.K_d:
                     self.player.stop()
+            # 处理Shift键释放
+                elif event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
+                    self.player.set_sprint(False)
         return True
-    
     def restart_game(self):
         """重新开始游戏"""
         self.game_over = False
@@ -205,6 +218,16 @@ class Game:
             self.player.move_left()
         elif keys[pygame.K_d]:
             self.player.move_right()
+        else:
+    # 当没有按左右键时停止
+            if not (keys[pygame.K_a] or keys[pygame.K_d]):
+                self.player.stop()
+
+# 奔跑键 - 检查Shift键是否按下
+        if keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]:
+            self.player.set_sprint(True)
+        else:
+            self.player.set_sprint(False)
             
         # 更新所有精灵
         self.all_sprites.update(self.platforms)
@@ -251,6 +274,7 @@ class Game:
         # 玩家越高（y值越小），得分越高
         height_gained = self.base_height - self.max_height_reached
         self.score = max(0, height_gained // 10)  # 每上升10像素得1分
+
     
     def player_die(self):
         """处理玩家死亡事件"""
@@ -353,14 +377,19 @@ class Game:
             game_over_text = large_font.render("GAME OVER!", True, RED)
             restart_text = font.render("按任意键重新开始", True, RED)
             
+            
             # 居中显示文本
             game_over_rect = game_over_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 30))
             restart_rect = restart_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 20))
+            
+
             
             # 闪烁效果：每秒闪烁一次
             if self.restart_timer < 30:  # 半秒亮半秒暗
                 self.screen.blit(game_over_text, game_over_rect)
                 self.screen.blit(restart_text, restart_rect)
+             
+                
         
         pygame.display.flip()
     
