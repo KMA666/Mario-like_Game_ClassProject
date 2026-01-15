@@ -33,8 +33,8 @@ class Game:
         # 设置初始重生点在第一个安全平台上
         self.respawn_point = (250, 400)  # 第一个安全平台的位置
         
-        # 设置初始得分基准高度
-        self.base_height = self.respawn_point[1]  # 以出生位置的高度为0分基准
+        # 设置初始得分基准高度 - 修正为正确值
+        self.base_height = self.respawn_point[1]  # 以出生位置的高度为基准
         
         # 创建玩家 - 在安全平台上生成
         self.player = Player(self.respawn_point[0], self.respawn_point[1])
@@ -46,7 +46,7 @@ class Game:
         
         # 游戏得分
         self.score = 0
-        self.max_height_reached = self.base_height  # 玩家达到的最高y坐标（数值越小表示越高）
+        self.max_height_reached = self.respawn_point[1]  # 修正：初始高度应为玩家的y坐标
         
         # 摄像机偏移
         self.camera_offset_x = 0
@@ -405,8 +405,9 @@ class Game:
         """更新游戏得分"""
         # 得分计算：基于玩家达到的最高高度
         # 玩家越高（y值越小），得分越高
-        height_gained = self.base_height - self.max_height_reached
-        self.score = max(0, height_gained // 10)  # 每上升10像素得1分
+        # 修正：高度增益应该是基础高度减去当前最高点
+        height_gained = max(0, self.base_height - self.max_height_reached)  # 确保不为负值
+        self.score = height_gained // 10  # 每上升10像素得1分
 
     def player_die(self):
         """处理玩家死亡事件"""
@@ -477,9 +478,9 @@ class Game:
         if font is None:
             font = pygame.font.SysFont(None, 24)
         
-        # 显示提示信息
-        text = font.render("使用 A/D 键移动，W 键跳跃", True, RED)
-        self.screen.blit(text, (10, 10))
+        # # 显示提示信息
+        # text = font.render("使用 A/D 键移动，W 键跳跃", True, RED)
+        # self.screen.blit(text, (10, 10))
         
         # 显示当前得分
         score_text = font.render(f"游戏得分: {self.score}", True, RED)
