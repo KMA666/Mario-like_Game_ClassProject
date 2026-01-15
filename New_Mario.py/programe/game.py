@@ -11,9 +11,6 @@ from brick_platform import BrickPlatform
 from background_generator import generate_background
 from coin import Coin
 
-
-
-
 class Game:
     def __init__(self):
         # 获取当前脚本所在目录
@@ -57,6 +54,10 @@ class Game:
         # 游戏状态
         self.game_over = False
         self.restart_timer = 0  # 用于控制闪烁效果
+        
+        # 平台生成控制
+        self.platform_generation_threshold = 100  # 高度阈值，低于此值时生成新平台
+        self.max_height_limit = -10000  # 最大高度限制（负值表示向上）
     
     def create_level(self):
         # 尖刺地面平台 - 扩展范围以支持左右移动，包括向左延伸
@@ -70,18 +71,87 @@ class Game:
         self.platforms.add(platform1)
         self.all_sprites.add(platform1)
         
-        # 在上方生成一些初始平台
-        for i in range(1, 6):  # 生成5层平台
-            y_pos = 450 - i * 80  # 每层间隔80像素
-            x_pos = random.randint(50, SCREEN_WIDTH - 100)
-            platform = BrickPlatform(x_pos, y_pos, 80, 15)
-            self.platforms.add(platform)
-            self.all_sprites.add(platform)
+        # 预生成平台直到达到最大高度限制
+        self.pre_generate_platforms()
+    
+    def pre_generate_platforms(self):
+        """预先生成平台直到达到最大高度限制"""
+        # 从初始平台开始向上生成
+        current_highest = min(platform.rect.y for platform in self.platforms if platform != self.player)
+        
+        # 生成更多平台直到达到最大高度限制
+        while current_highest > self.max_height_limit:
+            # 计算要生成的新平台数量
+            platforms_needed = 5  # 每次生成5个新平台
+            
+            for i in range(platforms_needed):
+                # 从当前最高平台向上生成，确保跳跃可达
+                # 平台之间的垂直距离不能小于火柴人高度
+                min_vertical_distance = PLAYER_HEIGHT + 20  # 火柴人高度+缓冲
+                max_jump_height = abs(JUMP_STRENGTH) * 2.5  # 二段跳估算的最大高度
+                y_pos = current_highest - random.randint(min_vertical_distance, int(max_jump_height))
+                
+                # 确保不超过最大高度限制
+                if y_pos < self.max_height_limit:
+                    y_pos = self.max_height_limit
+                    # 如果达到最大高度限制，停止生成
+                    break
+                
+                # 生成x坐标
+                x_pos = random.randint(50, SCREEN_WIDTH - 100)
+                
+                # 检查新平台是否与现有平台重叠
+                overlap = True
+                attempts = 0
+                while overlap and attempts < 50:  # 最多重试50次
+                    overlap = False
+                    for platform in self.platforms:
+                        # 排除玩家，只检查平台间的碰撞
+                        if platform == self.player:
+                            continue
+                        # 检查新平台是否与现有平台重叠
+                        if (abs(platform.rect.x - x_pos) < 100 and 
+                            abs(platform.rect.y - y_pos) < 60):  # 减少垂直间隔
+                            overlap = True
+                            # 重新生成坐标
+                            y_pos = current_highest - random.randint(min_vertical_distance, int(max_jump_height))
+                            x_pos = random.randint(50, SCREEN_WIDTH - 100)
+                            break
+                    attempts += 1
+                
+                # 如果重试次数过多，仍然有重叠，强制生成
+                if attempts >= 50:
+                    # 采用固定间隔的方式生成平台
+                    x_pos = 100 + (i * 200) % (SCREEN_WIDTH - 200)  # 在屏幕宽度内循环
+                    y_pos = current_highest - 100  # 固定垂直间隔
+                
+                # 创建新平台
+                platform = BrickPlatform(x_pos, y_pos, 80, 15)
+                self.platforms.add(platform)
+                self.all_sprites.add(platform)
+                
+                # 每隔10个平台生成一个金币（约10个平台一次）
+                # 这里我们使用一个计数器来追踪平台数量
+                if hasattr(self, 'platform_count'):
+                    self.platform_count += 1
+                else:
+                    self.platform_count = 1
+                
+                # 每10个平台生成一次金币
+                if self.platform_count % 10 == 0:
+                    coin_x = x_pos + random.randint(10, 60)  # 在平台上的随机位置
+                    coin_y = y_pos - 20  # 在平台上方一点点
+                    coin = Coin(coin_x, coin_y)
+                    self.coins.add(coin)
+                    self.all_sprites.add(coin)
+            
+            # 更新当前最高平台
+            current_highest = min(platform.rect.y for platform in self.platforms if platform != self.player)
     
     def generate_new_platforms(self):
-        
+        """在上方随机生成新平台，确保平台间距离适中"""
         # 获取当前最高平台的大致位置
-        current_highest = min(platform.rect.y for platform in self.platforms)
+        current_highest = min(platform.rect.y for platform in self.platforms if platform != self.player)
 
         # 计算要生成的新平台数量
         platforms_needed = 3  # 每次生成3个新平台
@@ -95,13 +165,19 @@ class Game:
         # 生成新平台，确保它们之间有合理的距离
         for i in range(platforms_needed):
             # 从当前最高平台向上生成，确保跳跃可达
-            # 限制最大跳跃距离以确保玩家能够到达
+            # 平台之间的垂直距离不能小于火柴人高度
+            min_vertical_distance = PLAYER_HEIGHT + 20  # 火柴人高度+缓冲
             max_jump_height = abs(JUMP_STRENGTH) * 2.5  # 二段跳估算的最大高度
-            y_pos = current_highest - random.randint(60, int(max_jump_height))  # 减少最大高度
+            max_height_for_platform = max(min_vertical_distance, int(max_jump_height))
+            y_pos = current_highest - random.randint(min_vertical_distance, max_height_for_platform)  # 修复范围问题
+            
+            # 确保不超过最大高度限制
+            if y_pos < self.max_height_limit:
+                y_pos = self.max_height_limit
             
             # 估算玩家水平跳跃距离
             horizontal_range = min(max_horizontal_distance, SCREEN_WIDTH)
-            x_pos = random.randint(50, SCREEN_WIDTH - 50 - horizontal_range)
+            x_pos = random.randint(50, max(50, SCREEN_WIDTH - 50 - horizontal_range))
             
             # 检查新平台是否与现有平台重叠
             overlap = True
@@ -109,21 +185,27 @@ class Game:
             while overlap and attempts < 50:  # 最多重试50次
                 overlap = False
                 for platform in self.platforms:
+                    # 排除玩家，只检查平台间的碰撞
+                    if platform == self.player:
+                        continue
                     # 检查新平台是否与现有平台重叠
                     if (abs(platform.rect.x - x_pos) < 100 and 
                         abs(platform.rect.y - y_pos) < 60):  # 减少垂直间隔
                         overlap = True
                         # 重新生成坐标
-                        y_pos = current_highest - random.randint(60, int(max_jump_height))
-                        x_pos = random.randint(50, SCREEN_WIDTH - 50)
+                        y_pos = current_highest - random.randint(min_vertical_distance, max_height_for_platform)
+                        # 确保不超过最大高度限制
+                        if y_pos < self.max_height_limit:
+                            y_pos = self.max_height_limit
+                        x_pos = random.randint(50, max(50, SCREEN_WIDTH - 50))
                         break
                 attempts += 1
             
             # 如果重试次数过多，仍然有重叠，强制生成
             if attempts >= 50:
                 # 采用固定间隔的方式生成平台
-                x_pos = 100 + (i * 200)  # 固定水平间隔
-                y_pos = current_highest - 80  # 固定垂直间隔
+                x_pos = 100 + (i * 200) % (SCREEN_WIDTH - 200)  # 在屏幕宽度内循环
+                y_pos = current_highest - 100  # 固定垂直间隔
             
             # 创建新平台
             platform = BrickPlatform(x_pos, y_pos, 80, 15)
@@ -144,6 +226,7 @@ class Game:
                 coin = Coin(coin_x, coin_y)
                 self.coins.add(coin)
                 self.all_sprites.add(coin)
+    
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -166,6 +249,7 @@ class Game:
                 elif event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT:
                     self.player.set_sprint(False)
         return True
+    
     def restart_game(self):
         """重新开始游戏"""
         self.game_over = False
@@ -194,13 +278,8 @@ class Game:
         self.platforms.add(platform1)
         self.all_sprites.add(platform1)
         
-        # 在上方生成一些初始平台
-        for i in range(1, 6):  # 生成5层平台
-            y_pos = 450 - i * 80
-            x_pos = random.randint(50, SCREEN_WIDTH - 100)
-            platform = BrickPlatform(x_pos, y_pos, 80, 15)
-            self.platforms.add(platform)
-            self.all_sprites.add(platform)
+        # 预生成平台直到达到最大高度限制
+        self.pre_generate_platforms()
         
         # 重新添加玩家到精灵组
         self.all_sprites.add(self.player)
@@ -261,7 +340,7 @@ class Game:
         self.update_score()
         
         # 如果玩家到达当前最高点上方，生成新平台
-        if self.player.rect.y < self.max_height_reached - 100:  # 当玩家向上移动100像素以上时
+        if self.player.rect.y < self.max_height_reached - self.platform_generation_threshold:  # 当玩家向上移动超过阈值时
             self.generate_new_platforms()
             self.max_height_reached = self.player.rect.y
         
@@ -275,7 +354,6 @@ class Game:
         height_gained = self.base_height - self.max_height_reached
         self.score = max(0, height_gained // 10)  # 每上升10像素得1分
 
-    
     def player_die(self):
         """处理玩家死亡事件"""
         print(f"Player died! Final score: {self.score}")
@@ -296,7 +374,7 @@ class Game:
         # 获取所有平台中最左和最右的边界
         min_x = float('inf')
         max_x = float('-inf')
-        for platform in self.all_sprites:
+        for platform in self.platforms:  # 只检查平台，不包括玩家和其他精灵
             min_x = min(min_x, platform.rect.left)
             max_x = max(max_x, platform.rect.right)
         
@@ -370,29 +448,29 @@ class Game:
                         break
                     except:
                         continue
-            
+
             if large_font is None:
                 large_font = pygame.font.SysFont(None, 48)
                 
             game_over_text = large_font.render("GAME OVER!", True, RED)
             restart_text = font.render("按任意键重新开始", True, RED)
-            
+            # 添加最终得分显示
+            final_score_text = font.render(f"最终得分: {self.score}", True, RED)
             
             # 居中显示文本
-            game_over_rect = game_over_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 30))
-            restart_rect = restart_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 20))
-            
-
+            game_over_rect = game_over_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 60))
+            restart_rect = restart_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
+            final_score_rect = final_score_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 30))
             
             # 闪烁效果：每秒闪烁一次
             if self.restart_timer < 30:  # 半秒亮半秒暗
                 self.screen.blit(game_over_text, game_over_rect)
                 self.screen.blit(restart_text, restart_rect)
-             
-                
+                self.screen.blit(final_score_text, final_score_rect)
         
         pygame.display.flip()
-    
+                
+                    
     def run(self):
         running = True
         while running:
