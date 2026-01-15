@@ -40,8 +40,9 @@ class Game:
         self.player = Player(self.respawn_point[0], self.respawn_point[1])
         self.all_sprites.add(self.player)
         
-        # 创建关卡
-        self.create_level()
+        # 平台生成控制
+        self.platform_generation_threshold = 100  # 高度阈值，低于此值时生成新平台
+        self.max_height_limit = -10000  # 最大高度限制（负值表示向上）
         
         # 游戏得分
         self.score = 0
@@ -55,9 +56,8 @@ class Game:
         self.game_over = False
         self.restart_timer = 0  # 用于控制闪烁效果
         
-        # 平台生成控制
-        self.platform_generation_threshold = 100  # 高度阈值，低于此值时生成新平台
-        self.max_height_limit = -10000  # 最大高度限制（负值表示向上）
+        # 创建关卡
+        self.create_level()
     
     def create_level(self):
         # 尖刺地面平台 - 扩展范围以支持左右移动，包括向左延伸
@@ -79,26 +79,39 @@ class Game:
         # 从初始平台开始向上生成
         current_highest = min(platform.rect.y for platform in self.platforms if platform != self.player)
         
-        # 生成更多平台直到达到最大高度限制
-        while current_highest > self.max_height_limit:
+        # 生成平台直到达到最大高度限制或生成指定数量
+        platforms_generated = 0
+        max_platforms_to_generate = 120  # 限制总生成平台数量，减少40%
+        
+        while current_highest > self.max_height_limit and platforms_generated < max_platforms_to_generate:
             # 计算要生成的新平台数量
-            platforms_needed = 5  # 每次生成5个新平台
+            platforms_needed = min(3, max_platforms_to_generate - platforms_generated)  # 每次生成最多3个平台，减少40%
             
             for i in range(platforms_needed):
+                if platforms_generated >= max_platforms_to_generate:
+                    break
+                    
                 # 从当前最高平台向上生成，确保跳跃可达
-                # 平台之间的垂直距离不能小于火柴人高度
-                min_vertical_distance = PLAYER_HEIGHT + 20  # 火柴人高度+缓冲
+                # 平台之间的垂直距离不能小于火柴人两倍高度
+                min_vertical_distance = PLAYER_HEIGHT * 2 + 20  # 火柴人两倍高度+缓冲
                 max_jump_height = abs(JUMP_STRENGTH) * 2.5  # 二段跳估算的最大高度
-                y_pos = current_highest - random.randint(min_vertical_distance, int(max_jump_height))
+                
+                # 确保跳跃高度不小于最小距离
+                actual_max_height = max(min_vertical_distance, int(max_jump_height))
+                y_pos = current_highest - random.randint(min_vertical_distance, actual_max_height)
                 
                 # 确保不超过最大高度限制
                 if y_pos < self.max_height_limit:
                     y_pos = self.max_height_limit
-                    # 如果达到最大高度限制，停止生成
-                    break
                 
                 # 生成x坐标
                 x_pos = random.randint(50, SCREEN_WIDTH - 100)
+                
+                # 确定是否生成带尖刺的平台 (5%概率)
+                is_spike_platform = random.random() < 0.05
+                
+                # 确定是否生成移动平台 (10%概率，但在高度低于-1000时)
+                is_moving_platform = (random.random() < 0.1 and y_pos < -1000 and not is_spike_platform)
                 
                 # 检查新平台是否与现有平台重叠
                 overlap = True
@@ -114,7 +127,11 @@ class Game:
                             abs(platform.rect.y - y_pos) < 60):  # 减少垂直间隔
                             overlap = True
                             # 重新生成坐标
-                            y_pos = current_highest - random.randint(min_vertical_distance, int(max_jump_height))
+                            actual_max_height = max(min_vertical_distance, int(max_jump_height))
+                            y_pos = current_highest - random.randint(min_vertical_distance, actual_max_height)
+                            # 确保不超过最大高度限制
+                            if y_pos < self.max_height_limit:
+                                y_pos = self.max_height_limit
                             x_pos = random.randint(50, SCREEN_WIDTH - 100)
                             break
                     attempts += 1
@@ -122,11 +139,16 @@ class Game:
                 # 如果重试次数过多，仍然有重叠，强制生成
                 if attempts >= 50:
                     # 采用固定间隔的方式生成平台
-                    x_pos = 100 + (i * 200) % (SCREEN_WIDTH - 200)  # 在屏幕宽度内循环
+                    x_pos = 100 + (platforms_generated * 200) % (SCREEN_WIDTH - 200)  # 在屏幕宽度内循环
                     y_pos = current_highest - 100  # 固定垂直间隔
                 
                 # 创建新平台
-                platform = BrickPlatform(x_pos, y_pos, 80, 15)
+                if is_spike_platform:
+                    platform = BrickPlatform(x_pos, y_pos, 80, 15, PLATFORM, True)  # 创建带尖刺的平台
+                elif is_moving_platform:
+                    platform = BrickPlatform(x_pos, y_pos, 80, 15, PLATFORM, False, True)  # 创建移动平台
+                else:
+                    platform = BrickPlatform(x_pos, y_pos, 80, 15)
                 self.platforms.add(platform)
                 self.all_sprites.add(platform)
                 
@@ -144,9 +166,14 @@ class Game:
                     coin = Coin(coin_x, coin_y)
                     self.coins.add(coin)
                     self.all_sprites.add(coin)
+                
+                platforms_generated += 1
+                if platforms_generated >= max_platforms_to_generate:
+                    break
             
             # 更新当前最高平台
-            current_highest = min(platform.rect.y for platform in self.platforms if platform != self.player)
+            if self.platforms:
+                current_highest = min(platform.rect.y for platform in self.platforms if platform != self.player)
     
     def generate_new_platforms(self):
         """在上方随机生成新平台，确保平台间距离适中"""
@@ -154,7 +181,7 @@ class Game:
         current_highest = min(platform.rect.y for platform in self.platforms if platform != self.player)
 
         # 计算要生成的新平台数量
-        platforms_needed = 3  # 每次生成3个新平台
+        platforms_needed = 2  # 每次生成2个新平台，减少40%
 
         # 估算二段跳最大距离
         # 跳跃公式: v^2 = u^2 + 2as, 其中v=0, u=JUMP_STRENGTH, a=-GRAVITY
@@ -165,11 +192,13 @@ class Game:
         # 生成新平台，确保它们之间有合理的距离
         for i in range(platforms_needed):
             # 从当前最高平台向上生成，确保跳跃可达
-            # 平台之间的垂直距离不能小于火柴人高度
-            min_vertical_distance = PLAYER_HEIGHT + 20  # 火柴人高度+缓冲
+            # 平台之间的垂直距离不能小于火柴人两倍高度
+            min_vertical_distance = PLAYER_HEIGHT * 2 + 20  # 火柴人两倍高度+缓冲
             max_jump_height = abs(JUMP_STRENGTH) * 2.5  # 二段跳估算的最大高度
-            max_height_for_platform = max(min_vertical_distance, int(max_jump_height))
-            y_pos = current_highest - random.randint(min_vertical_distance, max_height_for_platform)  # 修复范围问题
+            
+            # 确保跳跃高度不小于最小距离
+            actual_max_height = max(min_vertical_distance, int(max_jump_height))
+            y_pos = current_highest - random.randint(min_vertical_distance, actual_max_height)  # 修复范围问题
             
             # 确保不超过最大高度限制
             if y_pos < self.max_height_limit:
@@ -178,6 +207,12 @@ class Game:
             # 估算玩家水平跳跃距离
             horizontal_range = min(max_horizontal_distance, SCREEN_WIDTH)
             x_pos = random.randint(50, max(50, SCREEN_WIDTH - 50 - horizontal_range))
+            
+            # 确定是否生成带尖刺的平台 (5%概率)
+            is_spike_platform = random.random() < 0.05
+            
+            # 确定是否生成移动平台 (10%概率，但在高度低于-1000时)
+            is_moving_platform = (random.random() < 0.1 and y_pos < -1000 and not is_spike_platform)
             
             # 检查新平台是否与现有平台重叠
             overlap = True
@@ -193,7 +228,8 @@ class Game:
                         abs(platform.rect.y - y_pos) < 60):  # 减少垂直间隔
                         overlap = True
                         # 重新生成坐标
-                        y_pos = current_highest - random.randint(min_vertical_distance, max_height_for_platform)
+                        actual_max_height = max(min_vertical_distance, int(max_jump_height))
+                        y_pos = current_highest - random.randint(min_vertical_distance, actual_max_height)
                         # 确保不超过最大高度限制
                         if y_pos < self.max_height_limit:
                             y_pos = self.max_height_limit
@@ -208,7 +244,12 @@ class Game:
                 y_pos = current_highest - 100  # 固定垂直间隔
             
             # 创建新平台
-            platform = BrickPlatform(x_pos, y_pos, 80, 15)
+            if is_spike_platform:
+                platform = BrickPlatform(x_pos, y_pos, 80, 15, PLATFORM, True)  # 创建带尖刺的平台
+            elif is_moving_platform:
+                platform = BrickPlatform(x_pos, y_pos, 80, 15, PLATFORM, False, True)  # 创建移动平台
+            else:
+                platform = BrickPlatform(x_pos, y_pos, 80, 15)
             self.platforms.add(platform)
             self.all_sprites.add(platform)
             
@@ -308,13 +349,16 @@ class Game:
         else:
             self.player.set_sprint(False)
             
-        # 更新所有精灵
+        # 更新所有精灵（包括移动平台）
+        for sprite in self.all_sprites:
+            if isinstance(sprite, BrickPlatform) and sprite.is_moving:
+                sprite.update()  # 更新移动平台
         self.all_sprites.update(self.platforms)
         
         # 检测金币碰撞
         coin_collisions = pygame.sprite.spritecollide(self.player, self.coins, True)
         for coin in coin_collisions:
-            self.score += 100  # 拾取金币增加100分
+            self.score += 30  # 拾取金币增加30分
         
         # 重置地面状态
         self.player.on_ground = False
@@ -327,6 +371,16 @@ class Game:
                 # 如果与尖刺地面碰撞，立即死亡
                 if (self.player.rect.bottom >= platform.rect.top and 
                     self.player.rect.top <= platform.rect.bottom and
+                    self.player.rect.right > platform.rect.left and 
+                    self.player.rect.left < platform.rect.right):
+                    self.player_die()
+                    return  # 立即返回，避免其他处理
+            # 检查是否与带尖刺的平台碰撞
+            elif hasattr(platform, 'has_spikes') and platform.has_spikes:
+                # 如果平台有尖刺，且玩家碰撞到尖刺部分，则死亡
+                # 尖刺通常在平台的顶部，所以检查玩家底部是否接触到平台顶部
+                if (self.player.rect.bottom >= platform.rect.top and 
+                    self.player.rect.bottom <= platform.rect.top + 10 and  # 尖刺高度大约10像素
                     self.player.rect.right > platform.rect.left and 
                     self.player.rect.left < platform.rect.right):
                     self.player_die()
@@ -424,12 +478,17 @@ class Game:
             font = pygame.font.SysFont(None, 24)
         
         # 显示提示信息
-        text = font.render("使用 A/D 键移动，W 键跳跃 - 避开尖刺！", True, RED)
+        text = font.render("使用 A/D 键移动，W 键跳跃", True, RED)
         self.screen.blit(text, (10, 10))
         
         # 显示当前得分
         score_text = font.render(f"游戏得分: {self.score}", True, RED)
         self.screen.blit(score_text, (10, 35))
+        
+        # 显示当前高度
+        current_height = self.base_height - self.player.rect.y  # 计算当前高度（相对于起始点）
+        height_text = font.render(f"当前高度: {current_height}", True, RED)
+        self.screen.blit(height_text, (10, 60))
         
         # 显示当前重生点信息
         # respawn_text = font.render(f"Respawn: ({self.respawn_point[0]}, {self.respawn_point[1]})", True, RED)

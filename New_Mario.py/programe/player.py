@@ -22,6 +22,8 @@ class Player(pygame.sprite.Sprite):
         # 跳跃相关
         self.jumps_remaining = 2  # 允许跳跃次数（2段跳）
         self.max_jumps = 2  # 最大跳跃次数
+        self.is_jumping = False  # 标记是否正在跳跃
+        self.jump_direction = 0  # 跳跃方向：-1向左，1向右，0原地
         
         # 奔跑相关
         self.is_sprinting = False  # 是否在奔跑
@@ -78,6 +80,20 @@ class Player(pygame.sprite.Sprite):
         # 应用重力
         self.vel_y += GRAVITY
         
+        # 检查是否在跳跃状态
+        if self.vel_y < 0:
+            self.is_jumping = True
+            # 根据水平速度确定跳跃方向
+            if self.vel_x < 0:
+                self.jump_direction = -1
+            elif self.vel_x > 0:
+                self.jump_direction = 1
+            else:
+                self.jump_direction = 0
+        elif self.on_ground:
+            self.is_jumping = False
+            self.jump_direction = 0
+        
         # 更新位置 - 先更新x方向
         self.rect.x += self.vel_x
         self.check_collisions(platforms, 'x')
@@ -98,6 +114,14 @@ class Player(pygame.sprite.Sprite):
             if hasattr(platform, 'platform_type') and platform.platform_type == DEATH_GROUND:
                 # 对于尖刺地面，我们不在这里处理碰撞，而是在game.py中处理死亡
                 continue
+            # 检查是否与带尖刺的平台碰撞
+            elif hasattr(platform, 'has_spikes') and platform.has_spikes:
+                # 这里不处理尖刺碰撞，由game.py处理
+                continue
+            # 检查是否与移动平台碰撞
+            elif hasattr(platform, 'is_moving') and platform.is_moving:
+                # 如果是移动平台，还要加上平台的移动速度
+                self.rect.x += platform.move_speed
             
             if direction == 'x':
                 if self.vel_x > 0:  # 向右移动
@@ -116,6 +140,8 @@ class Player(pygame.sprite.Sprite):
                     self.on_ground = True
                     # 落地时重置跳跃次数
                     self.jumps_remaining = self.max_jumps
+                    self.is_jumping = False
+                    self.jump_direction = 0
                 elif self.vel_y < 0:  # 上跳
                     self.rect.top = platform.rect.bottom
                     self.vel_y = 0
@@ -127,6 +153,14 @@ class Player(pygame.sprite.Sprite):
             self.vel_y = JUMP_STRENGTH
             self.jumps_remaining -= 1
             self.on_ground = False
+            self.is_jumping = True  # 标记为跳跃状态
+            # 根据当前面向方向设置跳跃方向
+            if self.vel_x < 0:
+                self.jump_direction = -1
+            elif self.vel_x > 0:
+                self.jump_direction = 1
+            else:
+                self.jump_direction = 0
     
     def move_left(self):
         speed = PLAYER_SPEED * SPRINT_MULTIPLIER if self.is_sprinting else PLAYER_SPEED
@@ -151,7 +185,7 @@ class Player(pygame.sprite.Sprite):
         self.update_sprite_image()
     
     def update_sprite_image(self):
-        """更新火柴人的图像，根据奔跑状态"""
+        """更新火柴人的图像，根据奔跑状态和跳跃状态"""
         # 创建角色表面
         self.image = pygame.Surface((PLAYER_WIDTH, PLAYER_HEIGHT), pygame.SRCALPHA)
         
@@ -172,7 +206,38 @@ class Player(pygame.sprite.Sprite):
         body_end = (center_x, PLAYER_HEIGHT // 2 + 5)  # 身体长度
         pygame.draw.line(self.image, BODY_COLOR, body_start, body_end, 2)
         
-        if self.is_sprinting:
+        # 根据状态绘制不同的火柴人
+        if self.is_jumping:
+            # 跳跃状态：根据跳跃方向显示不同动作
+            # 绘制手臂（跳跃姿态，向上收起）
+            arm_start = body_start
+            arm_end_left = (center_x - 7, PLAYER_HEIGHT // 2 - 10)
+            arm_end_right = (center_x + 7, PLAYER_HEIGHT // 2 - 10)
+            pygame.draw.line(self.image, LIMB_COLOR, arm_start, arm_end_left, 2)
+            pygame.draw.line(self.image, LIMB_COLOR, arm_start, arm_end_right, 2)
+            
+            # 绘制腿（跳跃姿态，根据方向调整姿势）
+            leg_start = body_end
+            
+            if self.jump_direction == -1:  # 向左跳跃
+                # 左腿向前（左侧）
+                leg_end_left = (center_x - 12, PLAYER_HEIGHT // 2 + 10)
+                # 右腿向后（右侧）
+                leg_end_right = (center_x + 10, PLAYER_HEIGHT - 5)
+            elif self.jump_direction == 1:  # 向右跳跃
+                # 左腿向后（左侧）
+                leg_end_left = (center_x - 10, PLAYER_HEIGHT - 5)
+                # 右腿向前（右侧）
+                leg_end_right = (center_x + 12, PLAYER_HEIGHT // 2 + 10)
+            else:  # 原地跳跃
+                # 左腿向上
+                leg_end_left = (center_x - 8, PLAYER_HEIGHT // 2 + 5)
+                # 右腿向下
+                leg_end_right = (center_x + 8, PLAYER_HEIGHT - 2)
+            
+            pygame.draw.line(self.image, LIMB_COLOR, leg_start, leg_end_left, 2)
+            pygame.draw.line(self.image, LIMB_COLOR, leg_start, leg_end_right, 2)
+        elif self.is_sprinting:
             # 奔跑状态：手臂和腿部呈奔跑姿态
             # 绘制手臂（奔跑姿态，向前后摆动）
             arm_start = body_start
